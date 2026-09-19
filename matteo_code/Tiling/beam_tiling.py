@@ -48,7 +48,11 @@ def _find_entry_point(dose, threshold_fraction):
 def _beam_direction(entry, bragg):
     """Compute the unit vector from the entry point to the Bragg peak."""
     vector = bragg - entry
-    return vector / np.linalg.norm(vector)
+    norm = np.linalg.norm(vector)
+    if norm < 1e-6:
+        # degenerate case: entry coincides with the Bragg peak (both on the boundary) — arbitrary direction
+        return np.array([1.0, 0.0, 0.0])
+    return vector / norm
 
 
 def create_mask(dose, entry, direction, radius, threshold_fraction):
@@ -189,6 +193,21 @@ def extract_beam_tiles(dose, tile_shape, step, threshold_fraction=0.1, radius=No
             origin             = origin,
             tile               = tile_mask,
             beam_coords_global = beam_voxels_local + np.array(origin),  # coordinates in the global volume
+            n_beam_voxels      = len(beam_voxels_local),
+        ))
+
+    # fallback: the loop above can end up empty in degenerate cases (e.g. entry == bragg,
+    # beam_len == 0) — force one tile centered on the Bragg peak so callers never see an empty list
+    if not tiles:
+        tile_mask, origin = _extract_tile(mask_uint8, bragg, tile_shape)
+        tile_mask = tile_mask.astype(bool)
+        beam_voxels_local = np.argwhere(tile_mask)
+        tiles.append(dict(
+            tile_id            = 0,
+            center             = tuple(int(round(float(v))) for v in bragg),
+            origin             = origin,
+            tile               = tile_mask,
+            beam_coords_global = beam_voxels_local + np.array(origin),
             n_beam_voxels      = len(beam_voxels_local),
         ))
 

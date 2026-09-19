@@ -33,8 +33,8 @@ validation_batch_size = 4
 epochs = 150
 
 # ===================== CONFIG: cambia questi due prima di ogni run =====================
-USE_TILING = None    # None (volume intero) | 'tile' | 'rec'
-USE_GAMMA = True      # True -> gamma pesa nella loss | False -> solo WMSE ('basic')
+USE_TILING = 'tile'    # None (volume intero) | 'tile' | 'rec'
+USE_GAMMA = False    # True -> gamma pesa nella loss | False -> solo WMSE ('basic')
 TILE_SHAPE = (64, 16, 64)
 
 DATA_MODE = USE_TILING if USE_TILING else 'none'

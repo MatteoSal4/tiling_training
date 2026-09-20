@@ -363,7 +363,7 @@ print("Starting Testing with Best Model...")
 print("="*60)
 
 # Output folders for test results
-prediction_folder = f"/NFSHOME/mspezialetti/sharedFolder/3D_Unet/new_experiments/predictions_combined_wmse_gamma_{timestamp}"
+prediction_folder = f"/media/proton-lab/migrameter_/models_and_outputs/predictions_{config_tag}_{timestamp}"
 image_folder = os.path.join(prediction_folder, "images")
 os.makedirs(prediction_folder, exist_ok=True)
 os.makedirs(image_folder, exist_ok=True)

@@ -53,7 +53,7 @@ save_best_model = f"/media/proton-lab/migrameter_/models_and_outputs/{timestamp}
 
 # ========== W&B INIT ==========
 wandb.init(
-    project="proton-therapy-unet_2mm_voxel",
+    project="matteo_thesis",
     name=f"Combined_WMSE_Gamma_loss_zero_outside_train_2_1_{timestamp}_{config_tag}_{input_shape_str}-dslow",
     config={
         "epochs": epochs,

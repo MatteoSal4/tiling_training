@@ -32,18 +32,25 @@ train_batch_size = 4
 validation_batch_size = 4
 epochs = 150
 
+train_path = '/media/proton-lab/migrameter_/data/Train/'
+validation_path = '/media/proton-lab/migrameter_/data/Val/'
+test_path = '/media/proton-lab/migrameter_/data/Test/'
+
 # ===================== CONFIG: cambia questi due prima di ogni run =====================
 USE_TILING = 'tile'    # None (volume intero) | 'tile' | 'rec'
-USE_GAMMA = False    # True -> gamma pesa nella loss | False -> solo WMSE ('basic')
-TILE_SHAPE = (64, 16, 64)
+USE_GAMMA = True    # True -> gamma pesa nella loss | False -> solo WMSE ('basic')
+
+# TILE_SHAPE: meta' della dimensione reale del volume (letta dal primo paziente del train set),
+# arrotondata al multiplo di 8 piu' vicino (richiesto dalla rete, vedi data_pipeline)
+_sample_volume_shape = np.load(train_path + '0/CT.npy').shape
+def _round_to_8(x):
+    return max(8, int(round(x / 8)) * 8)
+TILE_SHAPE = tuple(_round_to_8(s // 2) for s in _sample_volume_shape)
+print(f"Volume shape rilevata: {_sample_volume_shape} -> TILE_SHAPE automatica: {TILE_SHAPE}")
 
 DATA_MODE = USE_TILING if USE_TILING else 'none'
 config_tag = f"{DATA_MODE}_{'gamma' if USE_GAMMA else 'basic'}"
 # ==========================================================================================
-
-train_path = '/media/proton-lab/migrameter_/data/Train/'
-validation_path = '/media/proton-lab/migrameter_/data/Val/'
-test_path = '/media/proton-lab/migrameter_/data/Test/'
 
 timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 log_csv = f"/media/proton-lab/migrameter_/models_and_outputs/{timestamp}_{config_tag}_combined_wmse_gamma_train_2_1_out_{input_shape_str}_zero_outside_more_data_2mm_1%.csv"

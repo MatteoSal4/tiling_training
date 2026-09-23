@@ -20,10 +20,10 @@ np.random.seed(42)
 torch.manual_seed(42)
 
 # ===================== CONFIG: cambia questi prima di ogni test =====================
-MODEL_PATH = "/media/proton-lab/migrameter_/models_and_outputs/2026-09-20_16-27-33_tile_gamma_combined_wmse_gamma_train_2_1_out_256-32-256_zero_outside_more_data_2mm_1%.pth"
+MODEL_PATH = "/media/proton-lab/EXTERNAL_USB/matteo_thesis/models_and_outputs/2026-09-21_21-11-32_tile_gamma_combined_wmse_gamma_train_2_1_out_256-32-256_zero_outside_more_data_2mm_1%.pth"
 USE_TILING = 'tile'          # deve combaciare con come e' stato allenato il modello
-TILE_SHAPE = (64, 16, 64)
-config_tag = "tile_gamma"    # solo per nominare gli output
+TILE_SHAPE = (128, 16, 16)   # deve combaciare con la TILE_SHAPE usata in fase di training per QUESTO checkpoint
+config_tag = "tile_gamma_v2"    # solo per nominare gli output
 # ======================================================================================
 
 DATA_MODE = USE_TILING if USE_TILING else 'none'
@@ -33,8 +33,8 @@ DOSE_PERCENT_THRESHOLD = 2.0
 DTA_MM_THRESHOLD = 2.0
 VOXEL_SIZE_MM = 2.0
 
-test_path = '/media/proton-lab/migrameter_/data/Test/'
-output_root = f"/media/proton-lab/migrameter_/models_and_outputs/test_results/{config_tag}"
+test_path = '/media/proton-lab/EXTERNAL_USB/matteo_thesis/data/Test/'
+output_root = f"/media/proton-lab/EXTERNAL_USB/matteo_thesis/models_and_outputs/test_results/{config_tag}"
 image_folder = os.path.join(output_root, "images")
 results_csv = os.path.join(output_root, "test_results.csv")
 os.makedirs(image_folder, exist_ok=True)

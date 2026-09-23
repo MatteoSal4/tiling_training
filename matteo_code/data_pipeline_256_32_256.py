@@ -7,16 +7,13 @@ import torch.nn.functional as F
 from Tiling.beam_tiling import extract_beam_tiles, extract_dose_tiles, _extract_tile
 from Tiling.reconstruction import reconstruct_volume_from_tiles
 
-MODE = 'none'  # cambio per test  (none tile o rec)
-TILE_SHAPE = (64, 16, 64)  # cambio per test (divisibile per 8 sennò errore)
-
 class data_pipeline(Dataset):
     """
     PyTorch Dataset for 3D CT and dose volumes.
     Binary mask is downsampled and returned separately.
     """
-    def __init__(self, path, index_list, threshold=0.1, refine=False,
-                 mode=MODE, tile_shape=TILE_SHAPE, radius=None):
+    def __init__(self, path, index_list, mode, tile_shape, threshold=0.1, refine=False,
+                 radius=None):
         """
         path: folder containing patient subfolders
         index_list: list of patient IDs
@@ -47,7 +44,7 @@ class data_pipeline(Dataset):
 
         # --- Load raw data ---
 
-        # /media/proton-lab/migrameter_/data/<split>/<patient_id>/CT.npy | dose5K.npy | dose1M.npy
+        # /media/proton-lab/EXTERNAL_USB/matteo_thesis/data/<split>/<patient_id>/CT.npy | dose5K.npy | dose1M.npy
         patient_folder = self.path + str(self.index_list[base_idx]) + '/'
         CT = np.load(patient_folder + 'CT.npy').astype(np.float32)
         Dose_5K = np.load(patient_folder + 'dose5K.npy').astype(np.float32)
@@ -65,9 +62,12 @@ class data_pipeline(Dataset):
 
         if rot_type !=0:
 
-            CT_norm_rotated = np.rot90(CT_norm, k=rot_type, axes=(0,2)).copy()
-            Dose_5K_norm_rotated = np.rot90(Dose_5K_norm, k=rot_type, axes=(0,2)).copy()
-            Dose_1M_norm_rotated = np.rot90(Dose_1M_norm, k=rot_type, axes=(0,2)).copy()
+            # Rotate around axis 0 (the elongated beam-depth axis, e.g. 256) using the
+            # plane formed by axes 1 and 2 (equal-sized, e.g. 32x32) so the shape stays
+            # constant across all 4 rotations -- axes (0,2) would swap unequal axis sizes.
+            CT_norm_rotated = np.rot90(CT_norm, k=rot_type, axes=(1,2)).copy()
+            Dose_5K_norm_rotated = np.rot90(Dose_5K_norm, k=rot_type, axes=(1,2)).copy()
+            Dose_1M_norm_rotated = np.rot90(Dose_1M_norm, k=rot_type, axes=(1,2)).copy()
 
         else:
             CT_norm_rotated = CT_norm

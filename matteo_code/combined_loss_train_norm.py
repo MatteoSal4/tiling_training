@@ -32,9 +32,9 @@ train_batch_size = 4
 validation_batch_size = 4
 epochs = 150
 
-train_path = '/media/proton-lab/migrameter_/data/Train/'
-validation_path = '/media/proton-lab/migrameter_/data/Val/'
-test_path = '/media/proton-lab/migrameter_/data/Test/'
+train_path = '/media/proton-lab/EXTERNAL_USB/matteo_thesis/data/Train/'
+validation_path = '/media/proton-lab/EXTERNAL_USB/matteo_thesis/data/Val/'
+test_path = '/media/proton-lab/EXTERNAL_USB/matteo_thesis/data/Test/'
 
 # ===================== CONFIG: cambia questi due prima di ogni run =====================
 USE_TILING = 'tile'    # None (volume intero) | 'tile' | 'rec'
@@ -53,8 +53,8 @@ config_tag = f"{DATA_MODE}_{'gamma' if USE_GAMMA else 'basic'}"
 # ==========================================================================================
 
 timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-log_csv = f"/media/proton-lab/migrameter_/models_and_outputs/{timestamp}_{config_tag}_combined_wmse_gamma_train_2_1_out_{input_shape_str}_zero_outside_more_data_2mm_1%.csv"
-save_best_model = f"/media/proton-lab/migrameter_/models_and_outputs/{timestamp}_{config_tag}_combined_wmse_gamma_train_2_1_out_{input_shape_str}_zero_outside_more_data_2mm_1%.pth"
+log_csv = f"/media/proton-lab/EXTERNAL_USB/matteo_thesis/models_and_outputs/{timestamp}_{config_tag}_combined_wmse_gamma_train_2_1_out_{input_shape_str}_zero_outside_more_data_2mm_1%.csv"
+save_best_model = f"/media/proton-lab/EXTERNAL_USB/matteo_thesis/models_and_outputs/{timestamp}_{config_tag}_combined_wmse_gamma_train_2_1_out_{input_shape_str}_zero_outside_more_data_2mm_1%.pth"
 
 
 
@@ -370,7 +370,7 @@ print("Starting Testing with Best Model...")
 print("="*60)
 
 # Output folders for test results
-prediction_folder = f"/media/proton-lab/migrameter_/models_and_outputs/predictions_{config_tag}_{timestamp}"
+prediction_folder = f"/media/proton-lab/EXTERNAL_USB/matteo_thesis/models_and_outputs/predictions_{config_tag}_{timestamp}"
 image_folder = os.path.join(prediction_folder, "images")
 os.makedirs(prediction_folder, exist_ok=True)
 os.makedirs(image_folder, exist_ok=True)

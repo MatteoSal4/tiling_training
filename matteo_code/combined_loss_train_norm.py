@@ -32,18 +32,12 @@ train_batch_size = 4
 validation_batch_size = 4
 epochs = 150
 
-# mode='tile' only: max tiles processed in a single forward/backward pass.
-# A patient's tiles beyond this are split into sub-batches with gradient
-# accumulation, so VRAM usage stays capped regardless of how many tiles a
-# patient has (can be 20-35+), instead of scaling with the patient's tile count.
-TILE_ALL_SUBBATCH = 4
-
 train_path = '/media/proton-lab/EXTERNAL_USB/matteo_thesis/data/Train/'
 validation_path = '/media/proton-lab/EXTERNAL_USB/matteo_thesis/data/Val/'
 test_path = '/media/proton-lab/EXTERNAL_USB/matteo_thesis/data/Test/'
 
 # ===================== CONFIG: cambia questi due prima di ogni run =====================
-USE_TILING = 'tile'    # None (volume intero) | 'tile' (tutte le tile del paziente) | 'rec'
+USE_TILING = 'tile'    # None (volume intero) | 'tile' (tutte le tile del paziente)
 USE_GAMMA = True    # True -> gamma pesa nella loss | False -> solo WMSE ('basic')
 
 # TILE_SHAPE: meta' della dimensione reale del volume (letta dal primo paziente del train set),
@@ -230,49 +224,38 @@ for epoch in range(epochs):
     for X, Y in tqdm(train_dataloader, desc=f"Epoch {epoch+1}/{epochs}"):
 
         if DATA_MODE == 'tile':
-            # X,Y: (1, n_tiles, 2/1, Tz,Ty,Tx) -> drop the DataLoader's batch_size=1 wrapper
-            X = X.squeeze(0)
-            Y = Y.squeeze(0)
-            n_tiles = X.size(0)
+            # X,Y: (1, n_tiles, 2/1, Tz,Ty,Tx) -> drop the DataLoader's batch_size=1 wrapper;
+            # n_tiles becomes the batch dimension for one direct forward/backward pass.
+            # With the non-overlapping step, n_tiles is always small (<=4, bounded by this
+            # volume's own diagonal relative to TILE_SHAPE[0]) so no sub-batching/gradient
+            # accumulation is needed -- the whole patient fits in a single pass, same as
+            # every other mode.
+            input = X.squeeze(0).to(device, non_blocking=True)
+            target = Y.squeeze(0).to(device, non_blocking=True)
 
             optimizer.zero_grad(set_to_none=True)
-            patient_loss = patient_wmse = patient_gamma = patient_outside = patient_gpr = 0.0
 
-            for start in range(0, n_tiles, TILE_ALL_SUBBATCH):
-                sub_X = X[start:start + TILE_ALL_SUBBATCH].to(device, non_blocking=True)
-                sub_Y = Y[start:start + TILE_ALL_SUBBATCH].to(device, non_blocking=True)
-                sub_n = sub_X.size(0)
+            with autocast(dtype=torch.bfloat16):
+                output = model(x=input)
+                output_norm = output / (output.amax(dim=(2, 3, 4), keepdim=True) + 1e-10)
+                loss, loss_dict = criterion(output_norm, target)
 
-                with autocast(dtype=torch.bfloat16):
-                    output = model(x=sub_X)
-                    output_norm = output / (output.amax(dim=(2, 3, 4), keepdim=True) + 1e-10)
-                    loss, loss_dict = criterion(output_norm, sub_Y)
-
-                # scale so every tile contributes equally regardless of sub-batch size,
-                # and gradients accumulate correctly across sub-batches before the optimizer step
-                scaler.scale(loss * sub_n / n_tiles).backward()
-
-                with torch.no_grad():
-                    gpr = criterion.compute_pass_rate(output_norm, sub_Y)
-
-                patient_loss += loss.item() * sub_n
-                patient_wmse += loss_dict['wmse'] * sub_n
-                patient_gamma += loss_dict['gamma'] * sub_n
-                patient_outside += loss_dict['outside'] * sub_n
-                patient_gpr += gpr * sub_n
-
-                del sub_X, sub_Y, output, output_norm, loss
-
+            scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
 
+            with torch.no_grad():
+                gpr = criterion.compute_pass_rate(output_norm, target)
+
             # this forward pass represents ONE dataset item (one patient+rotation),
             # so it contributes weight=1 to the epoch average, same as every other mode
-            train_loss += patient_loss / n_tiles
-            train_wmse += patient_wmse / n_tiles
-            train_gamma += patient_gamma / n_tiles
-            train_outside += patient_outside / n_tiles
-            train_gpr += patient_gpr / n_tiles
+            train_loss += loss.item()
+            train_wmse += loss_dict['wmse']
+            train_gamma += loss_dict['gamma']
+            train_outside += loss_dict['outside']
+            train_gpr += gpr
+
+            del input, target, output, output_norm, loss
 
         else:
             input = X.to(device, non_blocking=True)
@@ -326,34 +309,23 @@ for epoch in range(epochs):
             for X, Y in val_dataloader:
 
                 if DATA_MODE == 'tile':
-                    X = X.squeeze(0)
-                    Y = Y.squeeze(0)
-                    n_tiles = X.size(0)
-                    patient_loss = patient_wmse = patient_gamma = patient_outside = patient_gpr = 0.0
+                    # n_tiles becomes the batch dimension, single forward pass (see training
+                    # loop above for why no sub-batching is needed: n_tiles <= 4 always).
+                    input = X.squeeze(0).to(device, non_blocking=True)
+                    target = Y.squeeze(0).to(device, non_blocking=True)
 
-                    for start in range(0, n_tiles, TILE_ALL_SUBBATCH):
-                        sub_X = X[start:start + TILE_ALL_SUBBATCH].to(device, non_blocking=True)
-                        sub_Y = Y[start:start + TILE_ALL_SUBBATCH].to(device, non_blocking=True)
-                        sub_n = sub_X.size(0)
+                    output = model(x=input)
+                    output_norm = output / (output.amax(dim=(2, 3, 4), keepdim=True) + 1e-10)
+                    loss, loss_dict = criterion(output_norm, target)
+                    gpr = criterion.compute_pass_rate(output_norm, target)
 
-                        output = model(x=sub_X)
-                        output_norm = output / (output.amax(dim=(2, 3, 4), keepdim=True) + 1e-10)
-                        loss, loss_dict = criterion(output_norm, sub_Y)
-                        gpr = criterion.compute_pass_rate(output_norm, sub_Y)
+                    val_loss += loss.item()
+                    val_wmse += loss_dict['wmse']
+                    val_gamma += loss_dict['gamma']
+                    val_outside += loss_dict['outside']
+                    val_gpr += gpr
 
-                        patient_loss += loss.item() * sub_n
-                        patient_wmse += loss_dict['wmse'] * sub_n
-                        patient_gamma += loss_dict['gamma'] * sub_n
-                        patient_outside += loss_dict['outside'] * sub_n
-                        patient_gpr += gpr * sub_n
-
-                        del sub_X, sub_Y, output, output_norm, loss
-
-                    val_loss += patient_loss / n_tiles
-                    val_wmse += patient_wmse / n_tiles
-                    val_gamma += patient_gamma / n_tiles
-                    val_outside += patient_outside / n_tiles
-                    val_gpr += patient_gpr / n_tiles
+                    del input, target, output, output_norm, loss
 
                 else:
                     input = X.to(device, non_blocking=True)

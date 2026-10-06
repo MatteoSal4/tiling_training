@@ -4,25 +4,22 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
 
-from Tiling.beam_tiling import extract_beam_tiles, extract_dose_tiles, _extract_tile
-from Tiling.reconstruction import reconstruct_volume_from_tiles
+from Tiling.beam_tiling import extract_beam_tiles, _extract_tile
 
 class data_pipeline(Dataset):
     """
     PyTorch Dataset for 3D CT and dose volumes.
     Binary mask is downsampled and returned separately.
     """
-    def __init__(self, path, index_list, mode, tile_shape, threshold=0.1, refine=False,
-                 radius=None):
+    def __init__(self, path, index_list, mode, tile_shape, threshold=0.1, refine=False):
         """
         path: folder containing patient subfolders
         index_list: list of patient IDs
         mask_downsample_factor: int, factor to downsample mask
         use_mask: whether to return mask
         mode: 'none' (whole volume, default) | 'tile' (every candidate tile for the
-              patient, stacked) | 'rec' (reconstructed volume from tiles)
-        tile_shape: (tz, ty, tx) tile size, used only when mode='tile'/'rec' — keep divisible by 8
-        radius: beam mask cylinder radius; None -> min(tile_shape)/4
+              patient, stacked)
+        tile_shape: (tz, ty, tx) tile size, used only when mode='tile' — keep divisible by 8
         """
         self.path = path
         self.index_list = index_list
@@ -30,8 +27,7 @@ class data_pipeline(Dataset):
         self.refine = refine
         self.mode = mode
         self.tile_shape = tile_shape
-        self.radius = radius
-       
+
     def __len__(self):
         return len(self.index_list)*4
 
@@ -107,21 +103,6 @@ class data_pipeline(Dataset):
             X = torch.from_numpy(np.stack((CT_stack, Dose5K_stack), axis=1))  # (n_tiles, 2, Tz, Ty, Tx)
             Y = torch.from_numpy(np.expand_dims(Dose1M_stack, axis=1))        # (n_tiles, 1, Tz, Ty, Tx)
             return X, Y
-
-        # --- mode='rec': it reconstructs the volume from the tiles ---
-        elif self.mode == 'rec':
-            step = min(self.tile_shape) / 2
-            tiles, _, _, _ = extract_beam_tiles(
-                Dose_5K_norm_rotated, self.tile_shape, step, threshold_fraction=self.threshold, radius=self.radius
-            )
-
-            extract_dose_tiles(Dose_5K_norm_rotated, tiles, self.tile_shape)
-            Dose_5K_norm_rotated = reconstruct_volume_from_tiles(tiles, self.tile_shape, Dose_5K_norm_rotated.shape)
-
-            extract_dose_tiles(CT_norm_rotated, tiles, self.tile_shape)
-            CT_norm_rotated = reconstruct_volume_from_tiles(tiles, self.tile_shape, CT_norm_rotated.shape)
-
-            # Dose_1M_norm_rotated stays untouched
 
         # --- mode='none': it doesn't change the pipeline ---
 

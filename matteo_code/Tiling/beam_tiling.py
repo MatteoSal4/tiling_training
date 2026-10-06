@@ -115,27 +115,6 @@ def _extract_tile(volume, center, tile_shape):
     return tile, origin
 
 
-def extract_dose_tiles(dose, tiles, tile_shape):
-    """
-    Extract raw dose tiles at the same positions as the already-computed beam tiles.
-    Adds 'tile_dose' to each dict in the list in-place.
-
-    Parameters
-    ----------
-    dose       : (Z, Y, X) ndarray — dose volume to sample
-    tiles      : list[dict] — output of extract_beam_tiles (modified in-place)
-    tile_shape : (tz, ty, tx)
-
-    Returns
-    -------
-    tiles : same list with 'tile_dose' added to each dict
-    """
-    for t in tiles:
-        tile_dose, _ = _extract_tile(dose, t['center'], tile_shape)
-        t['tile_dose'] = tile_dose
-    return tiles
-
-
 def extract_beam_tiles(dose, tile_shape, step, threshold_fraction=0.1, radius=None):
     """
     Extract tiles along the beam axis.

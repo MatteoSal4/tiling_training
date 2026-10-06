@@ -169,8 +169,12 @@ def extract_beam_tiles(dose, tile_shape, step, threshold_fraction=0.1, radius=No
     beam_len   = float(np.linalg.norm(bragg - entry))  # total beam length in voxels
 
     tiles = []
-    # place a tile center every `step` voxels along the beam axis
-    for dist in np.arange(0.0, beam_len * 1.1, step):
+    # place tile centers along the beam axis, spaced ~`step` voxels apart, but always
+    # including the far end of the margin -- np.arange can stop short of it when step
+    # is large/coarse (e.g. non-overlapping tiles), leaving the beam's tail uncovered.
+    span = beam_len * 1.1
+    n_steps = max(1, int(np.ceil(span / step)) + 1) if span > 0 else 1
+    for dist in np.linspace(0.0, span, n_steps):
         center = entry + dist * direction
 
         # skip if the center is outside the volume

@@ -31,7 +31,7 @@ def trilinear_upsample(volume, scale_factor=2):
     return upsampled.squeeze(0).squeeze(0).numpy().astype(original_dtype)
 
 
-def reconstruct_volume_from_tiles(tiles, tile_shape, volume_shape):
+def reconstruct_volume_from_tiles(tiles, tile_shape, volume_shape, return_coverage=False):
     """
     Reconstruct a volume by placing tiles at their original coordinates.
     Voxels covered by multiple tiles are averaged. Uncovered voxels remain zero.
@@ -41,10 +41,14 @@ def reconstruct_volume_from_tiles(tiles, tile_shape, volume_shape):
     tiles        : list[dict] — must contain 'tile_dose' and 'origin'
     tile_shape    : (tz, ty, tx)
     volume_shape : (Z, Y, X)
+    return_coverage : bool — if True, also return a bool mask (Z,Y,X) that is
+                      True where at least one tile reconstructed that voxel,
+                      False where the voxel was never covered (stayed zero)
 
     Returns
     -------
     volume : (Z, Y, X) float32 ndarray
+    coverage : (Z, Y, X) bool ndarray — only returned when return_coverage=True
     """
     # accumulator sums the dose of all tiles covering each voxel
     # count tracks how many tiles cover each voxel
@@ -88,4 +92,6 @@ def reconstruct_volume_from_tiles(tiles, tile_shape, volume_shape):
     # count_safe avoids division by zero (np.where evaluates both branches)
     count_safe = np.where(count > 0, count, 1)
     volume     = np.where(count > 0, accumulator / count_safe, 0.0).astype(np.float32)
+    if return_coverage:
+        return volume, count > 0
     return volume

@@ -19,7 +19,8 @@ class data_pipeline(Dataset):
         index_list: list of patient IDs
         mask_downsample_factor: int, factor to downsample mask
         use_mask: whether to return mask
-        mode: 'none' (whole volume, default) | 'tile' (single small tile) | 'rec' (reconstructed volume from tiles)
+        mode: 'none' (whole volume, default) | 'tile' (every candidate tile for the
+              patient, stacked) | 'rec' (reconstructed volume from tiles)
         tile_shape: (tz, ty, tx) tile size, used only when mode='tile'/'rec' — keep divisible by 8
         radius: beam mask cylinder radius; None -> min(tile_shape)/4
         """
@@ -77,18 +78,35 @@ class data_pipeline(Dataset):
         # --- Normalize Dose_5K ---
         #Dose_5K_norm = (Dose_5K - Dose_5K.min()) / (Dose_5K.max() - Dose_5K.min() + 1e-8)
 
-        # --- mode='tile': it uses the tile instead of the whole volume ---
+        # --- mode='tile': every candidate tile for this patient, stacked on a leading
+        #     dimension (acts as the batch dimension for this patient's forward pass) ---
         if self.mode == 'tile':
-            step = min(self.tile_shape) / 2
+            # step = tile_shape[0] (the beam-depth extent): tile centers spaced so
+            # adjacent tiles touch edge-to-edge along the beam axis with no overlap
+            # (the only axis extract_beam_tiles places multiple tiles along -- laterally
+            # every tile is already centered on the beam axis, nothing to tile there).
+            step = self.tile_shape[0]
             tiles, _, _, _ = extract_beam_tiles(
                 Dose_5K_norm_rotated, self.tile_shape, step, threshold_fraction=self.threshold
             )
-            chosen = tiles[np.random.randint(len(tiles))]
-            center = chosen['center']
 
-            CT_norm_rotated, _      = _extract_tile(CT_norm_rotated,      center, self.tile_shape)
-            Dose_5K_norm_rotated, _ = _extract_tile(Dose_5K_norm_rotated, center, self.tile_shape)
-            Dose_1M_norm_rotated, _ = _extract_tile(Dose_1M_norm_rotated, center, self.tile_shape)
+            ct_tiles, dose5k_tiles, dose1m_tiles = [], [], []
+            for t in tiles:
+                center = t['center']
+                ct_t, _ = _extract_tile(CT_norm_rotated,      center, self.tile_shape)
+                d5_t, _ = _extract_tile(Dose_5K_norm_rotated, center, self.tile_shape)
+                d1_t, _ = _extract_tile(Dose_1M_norm_rotated, center, self.tile_shape)
+                ct_tiles.append(ct_t)
+                dose5k_tiles.append(d5_t)
+                dose1m_tiles.append(d1_t)
+
+            CT_stack    = np.stack(ct_tiles, axis=0)      # (n_tiles, Tz, Ty, Tx)
+            Dose5K_stack = np.stack(dose5k_tiles, axis=0)  # (n_tiles, Tz, Ty, Tx)
+            Dose1M_stack = np.stack(dose1m_tiles, axis=0)  # (n_tiles, Tz, Ty, Tx)
+
+            X = torch.from_numpy(np.stack((CT_stack, Dose5K_stack), axis=1))  # (n_tiles, 2, Tz, Ty, Tx)
+            Y = torch.from_numpy(np.expand_dims(Dose1M_stack, axis=1))        # (n_tiles, 1, Tz, Ty, Tx)
+            return X, Y
 
         # --- mode='rec': it reconstructs the volume from the tiles ---
         elif self.mode == 'rec':

@@ -4,7 +4,7 @@ beam_tiling.py — Extract tiles along a proton beam from dose volumes.
 
 Pipeline:
     1. Entry point  = boundary voxel with maximum dose
-    2. Bragg peak   = voxel with maximum dose (argmax)
+    2. Bragg peak   = maximum of the depth-dose profile (dose summed over the lateral axes)
     3. Beam axis    = unit vector from entry to Bragg peak
     4. Beam mask    = cylindrical tube of radius `radius` around the axis
     5. Tile centres = equally spaced along the axis (step voxels apart)
@@ -135,8 +135,12 @@ def extract_beam_tiles(dose, tile_shape, step, threshold_fraction=0.1, radius=No
     entry     : (3,) entry point on the volume boundary
     direction : (3,) unit vector toward the Bragg peak
     """
-    # find Bragg peak (absolute maximum) and entry point (maximum on the boundary)
-    bragg     = np.array(np.unravel_index(np.argmax(dose), dose.shape), dtype=float)
+    # Bragg peak: depth from the dose summed over the two lateral axes (robust to the noise of a
+    # single voxel), lateral position from the slices around that depth; entry point: maximum on the boundary
+    peak_z    = int(np.argmax(dose.sum(axis=(1, 2))))
+    lateral   = dose[max(0, peak_z - 2):peak_z + 3].sum(axis=0)
+    peak_y, peak_x = np.unravel_index(np.argmax(lateral), lateral.shape)
+    bragg     = np.array([peak_z, peak_y, peak_x], dtype=float)
     entry     = _find_entry_point(dose, threshold_fraction)
     direction = _beam_direction(entry, bragg)
 

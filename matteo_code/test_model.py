@@ -9,9 +9,8 @@ CONFIG flags below need to change:
 - USE_TILING='tile': the checkpoint was trained on ALL of a patient's tiles
   (non-overlapping). Here we extract every candidate tile for each test
   patient, run them through the model, reconstruct the full predicted volume
-  from the tile predictions, and compute WMSE/GPR only on the voxels actually
-  covered by at least one tile (not the whole volume -- it would compare
-  against regions the model never saw).
+  from the tile predictions (zero where no tile is present), and compute
+  WMSE/GPR on the whole volume against the full 1M dose.
 """
 import os
 import csv
@@ -34,10 +33,10 @@ np.random.seed(42)
 torch.manual_seed(42)
 
 # ===================== CONFIG: cambia questi prima di ogni test =====================
-MODEL_PATH = "/media/proton-lab/EXTERNAL_USB/matteo_thesis/models_and_outputs/2026-09-21_21-11-32_tile_gamma_combined_wmse_gamma_train_2_1_out_256-32-256_zero_outside_more_data_2mm_1%.pth"
+MODEL_PATH = "/media/proton-lab/EXTERNAL_USB/matteo_thesis/models_and_outputs/2026-10-06_18-58-36_tile_gamma_combined_wmse_gamma_train_2_1_out_256-32-256_zero_outside_more_data_2mm_1%.pth"
 USE_TILING = 'tile'          # None (volume intero) | 'tile' (tutte le tile, ricostruzione)
 TILE_SHAPE = (128, 16, 16)   # deve combaciare con la TILE_SHAPE usata in fase di training per QUESTO checkpoint
-config_tag = "tile_gamma_v2"    # solo per nominare gli output
+config_tag = "tile_gamma_fullvol"    # solo per nominare gli output
 TILE_SUBBATCH = 8            # mode='tile' only: tile processate insieme per forward pass (solo per controllare la VRAM)
 # ======================================================================================
 
@@ -145,15 +144,10 @@ def run_tile_mode():
             target_t = torch.from_numpy(Dose_1M_norm).unsqueeze(0).unsqueeze(0).to(device)
             coverage_t = torch.from_numpy(coverage).unsqueeze(0).unsqueeze(0).to(device)
 
-            # GPR restricted to tile coverage: compute_gamma resamples internally (~1mm),
-            # so coverage needs resampling (nearest, it's boolean) to the same grid before
-            # intersecting with its dose_valid_mask.
+            # GPR on the whole volume: voxels not covered by any tile are zero in the
+            # prediction, so those above the dose cutoff in the target count as failures.
             gamma, dose_valid_mask = gamma_loss.compute_gamma(pred_t, target_t)
-            if gamma.shape[2:] != coverage_t.shape[2:]:
-                coverage_resampled = F.interpolate(coverage_t.float(), size=gamma.shape[2:], mode='nearest') > 0.5
-            else:
-                coverage_resampled = coverage_t
-            final_mask = dose_valid_mask & coverage_resampled
+            final_mask = dose_valid_mask
             n_valid = final_mask.float().sum()
             if n_valid == 0:
                 gpr = 100.0
@@ -161,11 +155,10 @@ def run_tile_mode():
                 passing = (gamma < 1.0) & final_mask
                 gpr = (passing.float().sum() / n_valid).item() * 100
 
-            # WMSE restricted to tile coverage (same weighting formula as WeightedMSE, masked)
+            # WMSE on the whole volume (same weighting formula as WeightedMSE)
             weights = torch.exp(torch.clamp(target_t, -10.0, 10.0))  # alpha=1.0
             sq_error = (pred_t - target_t) ** 2
-            mask_f = coverage_t.float()
-            wmse = ((weights * sq_error * mask_f).sum() / ((weights * mask_f).sum() + 1e-8)).item()
+            wmse = ((weights * sq_error).sum() / (weights.sum() + 1e-8)).item()
 
             coverage_voxels = int(coverage.sum())
             writer.writerow([pid, n_tiles, coverage_voxels, wmse, gpr])
